@@ -1,377 +1,344 @@
 /*
-
-* ==UserScript==
-* @ScriptName        FileBall挂载阿里云盘、Alist
-* @Author            @Changes,@Cuttlefish
-* @TgChannel         https://t.me/ddgksf2021
-* @Contribute        https://t.me/ddgksf2013_bot
-* @Feedback          📮 ddgksf2013@163.com 📮
-* @WechatID          墨鱼手记
-* @UpdateTime        2022-09-13
-* @ScriptFunction    FileBall挂载阿里云盘、Alist，播放云盘中的音乐和视频文件
-* @Attention         如需引用请注明出处，谢谢合作！
-* @Version           v0.0.10
-* @Suit              脚本已使用Env做了兼容处理，理论适配多个工具，请自行测试
-* @ScriptURL         https://github.com/ddgksf2013/Scripts/raw/master/ali.js
-* ==/UserScript==
-
-
-[rewrite_local]
-
-^https?:\/\/.*\.example\.com url script-analyze-echo-response https://github.com/ddgksf2013/Scripts/raw/main/ali.js
-
-[mitm]
-
-hostname = *example.com
-
-
-FileBall操作步骤:
-*************************************
-1.0挂载Aliyun[仅单个账户]
-1.1添加Synology协议
-1.2地址填 aliyun.example.com
-1.3用户名随意
-1.4密码填【refresh_token】Token获取地址(需要用阿里云盘扫描alist的二维码获得)[ https://alist-doc.nn.ci/docs/driver/aliyundrive ]
-1.5目前阿里云盘仅支持单账户(多账户功能后续完善...)
-1.6连接&Enjoy
-1.7如需更换账户，请删除原aliyun列表，重新按照1.1-1.4步骤添加
-*************************************
-2.0挂载Alist[可多个账户]
-2.1添加Synology协议
-2.2地址填 alist.example.com
-2.3用户名填Alist地址，如 https://a.b.c
-2.4密码随意
-2.5按照2.1-2.4步骤可添加多个alist
-2.6当存在多个alist列表，需要使用某个alsit，请【左滑】，点击【画笔】，点击右上角【连接】使用
-2.7单alist使用时，无需2.6步骤
-2.8连接&Enjoy
-*************************************
+应用名称：自用B站去广告脚本
+脚本作者：Cuttlefish
+微信账号：公众号墨鱼手记
+更新时间：2022-12-02
+脚本版本：(77) 
+通知频道：https://t.me/ddgksf2021
+问题反馈：ddgksf2013@163.com
 */
 
-var $ = new Env('ALI');
-var date = new Date();
-var debug = false;
-var url = $request.url;
-/* alist persistentStore data */
-var host = $.getdata('alist_host');
-var alistUrl = $.getdata('alist_url');
-/* aliyun persistentStore data */
-var refreshToken = $.getdata('aliyun_refresh_token');
-var accessToken = $.getdata('aliyun_access_token');
-var driveId = $.getdata('aliyun_drive_id');
-
-var headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
-    'Content-Type': 'application/json'
-};
-var myResponse = {
-    status: 'HTTP/1.1 200 OK',
-};
-var obj = {};
-
-!(async () => {
-    if (typeof $request !== "undefined") {
-        if (/alist.*?\/webapi\/auth\.cgi/.test($request.url)) {
-            await AlistAuth();
-        } else if (/alist.*?webapi\/entry\.cgi/.test($request.url)) {
-            await AlistEntry();
-        } else if (/alist.*?fbdownload/.test($request.url)) {
-            await AlistDownLoad();
-        } else if (/aliyun.*?\/webapi\/auth\.cgi/.test($request.url)) {
-            await AliyunAuth();
-        } else if (/aliyun.*?webapi\/entry\.cgi/.test($request.url)) {
-            await AliyunEntry();
-        } else if (/aliyun.*?fbdownload/.test($request.url)) {
-            await AliyunDownLoad();
-        } else
-        ; /* no deal with */
-    } else {
-        $.msg($.name, "", "请勿手动执行本脚本！");
-    }
-})().catch((e) => $.logErr(e))
-    .finally(() => $.done())
-
-
-async function AliyunAuth() {
-    return new Promise(resolve => {
-        const body = $request.body;
-        const password = body.match(/passwd=([^&]*)/)[1];
-        const refreshToken = $.getdata('aliyun_refresh_token') ?? password;
-        const data = {
-            refresh_token: refreshToken,
-            grant_type: 'refresh_token'
-        };
-        const req = {
-            url: 'https://auth.aliyundrive.com/v2/account/token',
-            headers: headers,
-            body: JSON.stringify(data)
-        };
-        $.post(req, (err, resp, data) => {
-            try {
-                const body = JSON.parse(data);
-                if (body.refresh_token && body.access_token && body.default_drive_id) {
-                    $.setdata(body.refresh_token, 'aliyun_refresh_token');
-                    $.setdata(body.access_token, 'aliyun_access_token');
-                    $.setdata(body.default_drive_id, 'aliyun_drive_id');
-                    if (debug) {
-                        console.log('body.refresh_token:' + body.refresh_token);
-                        console.log('body.access_token:' + body.access_token);
-                        console.log('body.default_drive_id:' + body.default_drive_id);
-                    }
-                    obj = {
-                        success: true,
-                        data: {
-                            sid: body.access_token
-                        }
-                    };
-                    myResponse.body = JSON.stringify(obj);
-                    $.done(myResponse);
-                } else {
-                    $.done();
-                }
-            } catch (e) {
-                $.logErr(e, resp)
-            } finally {
-                resolve();
-            }
-        });
-    })
+const scriptName = "BiliBili";
+const storyAidKey = "bilibili_story_aid";
+const blackKey = "bilibili_feed_black";
+let magicJS = MagicJS(scriptName, "INFO");
+//Customize blacklist
+let blacklist = [];
+if (magicJS.read(blackKey)) {
+    blacklist = magicJS.read(blackKey).split(";");
+} else {
+    const defaultList = "";
+    magicJS.write(blackKey, defaultList);
+    blacklist = defaultList.split(";");
 }
-
-async function AliyunEntry() {
-    return new Promise(resolve => {
-        const body = $request.body;
-        if (typeof(body) === 'string') {
-            if (body.indexOf('list_share') != -1 || body.indexOf('method=list') != -1) {
-                headers.authorization = 'Bearer ' + accessToken;
-                var path = body.match(/folder_path=([^&]*)/) === null ? "root" : body.match(/folder_path=([^&]*)/)[1];
-                const isRootFolder = path === "root";
-                path = path.replace(/%25/g, '%');
-                //console.log(path);
-                const Data = {
-                    drive_id: driveId,
-                    fields: '*',
-                    parent_file_id: path,
-                    limit: 200
-                };
-                const req = {
-                    url: 'https://api.aliyundrive.com/v2/file/list',
-                    headers: headers,
-                    body: JSON.stringify(Data)
-                };
-                if (debug) console.log(JSON.stringify(req));
-                $.post(req, (err, resp, data) => {
-                    try {
-                        /* consider password dir */
-                        if (data.indexOf("password") != -1) {
-                            $.msg($.name, "", "此文件夹需要密码！");
-                        }
-                        const items = JSON.parse(data).items;
-                        var files = [];
-                        items.forEach(function(item) {
-                            const file = {
-                                isdir: item.type === 'folder',
-                                path: item.file_id,
-                                name: item.name,
-                                additional: {
-                                    size: item.size
+(() => {
+    let body = null;
+    if (magicJS.isResponse) {
+        switch (true) {
+            // 推荐去广告，最后问号不能去掉，以免匹配到story模式
+            case /^https:\/\/app\.bilibili\.com\/x\/v2\/feed\/index\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    let items = [];
+                    for (let item of obj["data"]["items"]) {
+                        if (item.hasOwnProperty("banner_item")) {
+                            let bannerItems = [];
+                            for (let banner of item["banner_item"]) {
+                                if (banner["type"] === "ad") {
+                                    continue;
                                 }
-                            };
-                            files.push(file);
-                        });
-                        const result = isRootFolder ? {
-                            total: 0,
-                            offset: 0,
-                            shares: files
-                        } : {
-                            total: 0,
-                            offset: 0,
-                            files: files
-                        };
-                        obj = {
-                            success: true,
-                            data: result
-                        };
-                        myResponse.body = JSON.stringify(obj);
-                        $.done(myResponse);
-                    } catch (e) {
-                        $.logErr(e, resp)
-                    } finally {
-                        resolve();
-                    }
-                });
-            }
-        } else {
-            $.done();
-        }
-    })
-}
-async function AliyunDownLoad() {
-    return new Promise(resolve => {
-        const hex = url.match(/dlink=%22(.*)%22/)[1];
-        const fileid = hexToUtf8(hex);
-        if (debug) console.log('fileId : ' + fileid);
-        const body = {
-            drive_id: driveId,
-            expire_sec: 14400,
-            file_id: fileid
-        };
-        headers.authorization = 'Bearer ' + accessToken;
-        const req = {
-            url: 'https://api.aliyundrive.com/v2/file/get_download_url',
-            headers: headers,
-            body: JSON.stringify(body)
-        };
-        $.post(req, (err, resp, data) => {
-            try {
-                const link = JSON.parse(data).url;
-                if (debug) console.log(link);
-                $.done({
-                    status: "HTTP/1.1 302 Found",
-                    headers: {
-                        "Location": link
-                    }
-                });
-            } catch (e) {
-                $.logErr(e, resp)
-            } finally {
-                resolve();
-            }
-        });
-    })
-}
-
-async function AlistAuth() {
-    return new Promise(resolve => {
-        const body = $request.body;
-        const host = decodeURIComponent(body.match(/account=([^&]*)/)[1]);
-        console.log('host:' + host);
-        $.setdata(host, 'alist_host');
-        obj = {
-            success: true,
-            data: {
-                sid: ''
-            }
-        };
-        myResponse.body = JSON.stringify(obj);
-        $.done(myResponse);
-    })
-}
-
-async function AlistEntry() {
-    return new Promise(resolve => {
-        const body = $request.body;
-        if (typeof(body) === 'string') {
-            if (body.indexOf('list_share') != -1 || body.indexOf('method=list') != -1) {
-                var path = body.match(/folder_path=([^&]*)/) === null ? "/" : body.match(/folder_path=([^&]*)/)[1];
-                const isRootFolder = path === "/";
-                path = path.replace(/%25/g, '%');
-                //console.log(path);
-                const Data = {
-                    page_num: 1,
-                    page_size: 100,
-                    password: '',
-                    path: decodeURIComponent(path)
-                };
-                const req = {
-                    url: host + '/api/public/path',
-                    headers: headers,
-                    body: JSON.stringify(Data)
-                };
-                $.post(req, (err, resp, data) => {
-                    try {
-                        /* consider password dir */
-                        if (data.indexOf("password") != -1) {
-                            $.msg($.name, "", "此文件夹需要密码！");
-                        }
-                        const items = JSON.parse(data).data.files;
-                        const parent = path === "/" ? "" : path;
-                        var files = [];
-                        var playurls = [];
-                        if (typeof $.getdata('alist_url') == "string") {
-                            playurls = JSON.parse($.getdata('alist_url'));
-                            if (debug) console.log("get persistentstore data");
-                        }
-                        items.forEach(function(item) {
-                            const file = {
-                                isdir: item.type === 1,
-                                path: parent + '/' + item.name,
-                                name: item.name,
-                                additional: {
-                                    size: item.size
+                                else if (banner["type"] === "static") {
+                                    continue;
                                 }
-                            };
-                            files.push(file);
-                            /* limit file type */
-                            if (item.type == 3 || item.type == 4) {
-                                const playurl = {
-                                    url: item.url,
-                                    name: item.name
-                                }
-                                playurls.push(playurl);
-                                if (playurls.length > 100) {
-                                    playurls.shift();
+                                else if (banner["static_banner"] && banner["static_banner"]["is_ad_loc"] != true) {
+                                    bannerItems.push(banner);
                                 }
                             }
-                        });
-                        if (playurls.length > 0) {
-                            /* consider start */
-                            $.setdata(JSON.stringify(playurls), 'alist_url');
+                            // 去除广告后，如果banner大于等于1个才添加到响应体
+                            if (bannerItems.length >= 1) {
+                                item["banner_item"] = bannerItems;
+                                items.push(item);
+                            }
+                        } else if (
+                            !item.hasOwnProperty("ad_info") &&
+                            !blacklist.includes(item["args"]["up_name"]) &&
+                            item.card_goto.indexOf("ad") === -1 &&
+                            (item["card_type"] === "small_cover_v2" || item["card_type"] === "large_cover_v1" || item["card_type"] === "large_cover_single_v9")
+                        ) {
+                            items.push(item);
                         }
-                        const result = isRootFolder ? {
-                            total: 0,
-                            offset: 0,
-                            shares: files
-                        } : {
-                            total: 0,
-                            offset: 0,
-                            files: files
-                        };
-                        obj = {
-                            success: true,
-                            data: result
-                        };
-                        myResponse.body = JSON.stringify(obj);
-                        $.done(myResponse);
-                    } catch (e) {
-                        $.logErr(e, resp)
-                    } finally {
-                        resolve();
                     }
-                });
-            }
-        } else {
-            $.done();
-        }
-    })
-}
-
-async function AlistDownLoad() {
-    return new Promise(resolve => {
-        const hex = $request.url.match(/dlink=%22(.*)%22/)[1];
-        const fileid = hexToUtf8(hex);
-        var playurls = JSON.parse($.getdata('alist_url'));
-        if (debug) console.log(fileid);
-        playurls.forEach(function(item) {
-            if (encodeURIComponent(fileid).indexOf(encodeURIComponent(item.name)) != -1) {
-                var target = item.url;
-                if (!target) {
-                    target = host + '/d' + fileid;
+                    obj["data"]["items"] = items;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`推荐去广告出现异常：${err}`);
                 }
-                if (debug) console.log(target);
-                $.done({
-                    status: "HTTP/1.1 302 Found",
-                    headers: {
-                        "Location": target
+                break;
+            // 匹配story模式，用于记录Story的aid
+            case /^https?:\/\/app\.bilibili\.com\/x\/v2\/feed\/index\/story\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    let items = [];
+                    for (let item of obj["data"]["items"]) {
+                        if (!item.hasOwnProperty("ad_info") && item.card_goto.indexOf("ad") === -1) {
+                            items.push(item);
+                        }
                     }
-                });
-            }
-        })
-    })
-}
+                    obj["data"]["items"] = items;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`记录Story的aid出现异常：${err}`);
+                }
+                break;
+            //teenagers modified
+            case /^https?:\/\/app\.bilibili\.com\/x\/v\d\/account\/teenagers\/status\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    obj.data.teenagers_status = 0;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`teenagers出现异常：${err}`);
+                }
+                break;
+            // 标签页处理，如去除会员购等等
+            case /^https?:\/\/app\.bilibili\.com\/x\/resource\/show\/tab/.test(magicJS.request.url):
+                try {
+                    const tabList = new Set([39, 40, 41, 774, 857, 545, 151, 442, 99, 100, 101, 554, 556]);
+                    const topList = new Set([176, 107]);
+                    const bottomList = new Set([177, 178, 179, 181, 102, 104, 106, 486, 488, 489]);
+                    let obj = JSON.parse(magicJS.response.body);
+                    if (obj["data"]["tab"]) {
+                        let tab = obj["data"]["tab"].filter((e) => {
+                            return tabList.has(e.id);
+                        });
+                        obj["data"]["tab"] = tab;
+                    }
+                    // 将 id（222 & 107）调整为Story功能按钮
+                    let storyAid = magicJS.read(storyAidKey);
+                    if (!storyAid) {
+                        storyAid = "246834163";
+                    }
+                    if (obj["data"]["top"]) {
+                        let top = obj["data"]["top"].filter((e) => {
+                            if (e.id === 222 || e.id === 107) {
+                                e.uri = `bilibili://story/${storyAid}`;
+                                e.icon = "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/script/bilibili/bilibili_icon.png";
+                                e.tab_id = "Story_Top";
+                                e.name = "Story";
+                            }
+                            return topList.has(e.id);
+                        });
+                        obj["data"]["top"] = top;
+                    }
+                    if (obj["data"]["bottom"]) {
+                        let bottom = obj["data"]["bottom"].filter((e) => {
+                            return bottomList.has(e.id);
+                        });
+                        obj["data"]["bottom"] = bottom;
+                    }
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`标签页处理出现异常：${err}`);
+                }
+                break;
+            // 我的页面处理，去除一些推广按钮
+            case /^https?:\/\/app\.bilibili\.com\/x\/v2\/account\/mine/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    const itemList = new Set([396, 397, 398, 399, 402, 404, 407, 410, 425, 426, 427, 428, 430, 432, 433, 434, 494, 495, 496, 497, 500, 501]);
+                    obj["data"]["sections_v2"].forEach((element, index) => {
+                        element["items"].forEach((e) => {
+                            if (e["id"] === 622) {
+                                e["title"] = "会员购";
+                                e["uri"] = "bilibili://mall/home";
+                            }
+                        });
+                        let items = element["items"].filter((e) => {
+                            return itemList.has(e.id);
+                        });
+                        obj["data"]["sections_v2"][index].button = {};
+                        delete obj["data"]["sections_v2"][index].be_up_title;
+                        delete obj["data"]["sections_v2"][index].tip_icon;
+                        delete obj["data"]["sections_v2"][index].tip_title;
+                        //2022-02-16 add by ddgksf2013
+                        for (let ii = 0; ii < obj["data"]["sections_v2"].length; ii++) {                                                        
+                            if (obj.data.sections_v2[ii].title == "创作中心" || obj.data.sections_v2[ii].title == "創作中心") {
+                                delete obj.data.sections_v2[ii].title;
+                                delete obj.data.sections_v2[ii].type;
+                            }
+                        }
+                        delete obj.data.vip_section_v2;
+                        delete obj.data.vip_section;
+                        obj["data"]["sections_v2"][index]["items"] = items;
+                        //2022-03-05 add by ddgksf2013
+                        if (obj.data.hasOwnProperty("live_tip")) {
+                            obj["data"]["live_tip"] = {};
+                        }
+                        if (obj.data.hasOwnProperty("answer")) {
+                            obj["data"]["answer"] = {};
+                        }
+                        obj["data"]["vip_type"] = 2;
+                        obj["data"]["vip"]["type"] = 2;
+                        obj["data"]["vip"]["status"] = 1;
+                        obj["data"]["vip"]["vip_pay_type"] = 1;
+                        obj["data"]["vip"]["due_date"] = 4669824160;
+                    });
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`我的页面处理出现异常：${err}`);
+                }
+                break;
+            // 直播去广告
+            case /^https?:\/\/api\.live\.bilibili\.com\/xlive\/app-room\/v1\/index\/getInfoByRoom/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    obj["data"]["activity_banner_info"] = null;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`直播去广告出现异常：${err}`);
+                }
+                break;
+            // 右上角活动
+            case /^https?:\/\/app\.bilibili\.com\/x\/resource\/top\/activity/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    if(obj.data){
+                    obj.data.hash = "ddgksf2013";
+                    obj.data.online.icon = "";
+                    }
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`右上角去广告出现异常：${err}`);
+                }
+                break;
+            //屏蔽热搜
+            case /^https?:\/\/app\.bilibili\.com\/x\/v2\/search\/square/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    obj.data = {
+                        type: "history",
+                        title: "搜索历史",
+                        search_hotword_revision: 2,
+                    };
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`热搜去广告出现异常：${err}`);
+                }
+                break;
+            //2022-03-05 add by ddgksf2013
+            case /https?:\/\/app\.bilibili\.com\/x\/v2\/account\/myinfo\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    //magicJS.logInfo(`公众号墨鱼手记`);
+                    obj["data"]["vip"]["type"] = 2;
+                    obj["data"]["vip"]["status"] = 1;
+                    obj["data"]["vip"]["vip_pay_type"] = 1;
+                    obj["data"]["vip"]["due_date"] = 4669824160;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`1080P出现异常：${err}`);
+                }
+                break;
+            // 追番去广告
+            case /pgc\/page\/bangumi/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    obj.result.modules.forEach((module) => {
+                        // 头部banner
+                        if (module.style.startsWith("banner")) {
+                            //i.source_content && i.source_content.ad_content
+                            module.items = module.items.filter((i) => !(i.link.indexOf("play") == -1));
+                        }
+                        if (module.style.startsWith("function")) {
+                            module.items = module.items.filter((i) => i.blink.indexOf("www.bilibili.com") == -1);
+                        }
+                        if (module.style.startsWith("tip")) {
+                            module.items = [];
+                        }
+                    });
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`追番去广告出现异常：${err}`);
+                }
+                break;
+            // 观影页去广告
+            case /pgc\/page\/cinema\/tab\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    obj.result.modules.forEach((module) => {
+                        // 头部banner
+                        if (module.style.startsWith("banner")) {
+                            module.items = module.items.filter((i) => !(i.link.indexOf("play") == -1));
+                        }
+                        if (module.style.startsWith("function")) {
+                            module.items = module.items.filter((i) => i.blink.indexOf("www.bilibili.com") == -1);
+                        }
+                        if (module.style.startsWith("tip")) {
+                            module.items = [];
+                        }
+                    });
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`观影页去广告出现异常：${err}`);
+                }
+                break;
+            // 动态去广告
+            case /^https?:\/\/api\.vc\.bilibili\.com\/dynamic_svr\/v1\/dynamic_svr\/dynamic_(history|new)\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    let cards = [];
+                    obj.data.cards.forEach((element) => {
+                        if (element.hasOwnProperty("display") && element.card.indexOf("ad_ctx") <= 0) {
+                            // 解决number类型精度问题导致B站动态中图片无法打开的问题
+                            element["desc"]["dynamic_id"] = element["desc"]["dynamic_id_str"];
+                            element["desc"]["pre_dy_id"] = element["desc"]["pre_dy_id_str"];
+                            element["desc"]["orig_dy_id"] = element["desc"]["orig_dy_id_str"];
+                            element["desc"]["rid"] = element["desc"]["rid_str"];
+                            cards.push(element);
+                        }
+                    });
+                    obj.data.cards = cards;
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`动态去广告出现异常：${err}`);
+                }
+                break;
+            // 去除统一设置的皮肤
+            case /^https?:\/\/app\.bilibili\.com\/x\/resource\/show\/skin\?/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    if (obj && obj.hasOwnProperty("data") && obj.data.hasOwnProperty("common_equip") && obj.data.common_equip.hasOwnProperty("package_url")) {
+                        //obj["data"]["common_equip"]["package_url"] = "";
+                    }
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`去除强制设置的皮肤出现异常：${err}`);
+                }
+                break;
+            // 开屏广告（预加载）如果粗暴地关掉，那么就使用预加载的数据，就会导致关不掉
+            case /^https:\/\/app\.bilibili\.com\/x\/v2\/splash\/list/.test(magicJS.request.url):
+                try {
+                    let obj = JSON.parse(magicJS.response.body);
+                    if (obj.data&&obj.data.list) {
+                        for (let item of obj["data"]["list"]) {
+                            item["duration"] = 0;
+                            // 显示时间
+                            // 2040 年
+                            item["begin_time"] = 2240150400;
+                            item["end_time"] = 2240150400;
+                        }
+                    }
+                    body = JSON.stringify(obj);
+                } catch (err) {
+                    magicJS.logError(`开屏广告（预加载）出现异常：${err}`);
+                }
+                break;
+            default:
+                magicJS.logWarning("触发意外的请求处理，请确认脚本或复写配置正常。");
+                break;
+        }
+    } else {
+        magicJS.logWarning("触发意外的请求处理，请确认脚本或复写配置正常。");
+    }
+    if (body) {
+        magicJS.done({
+            body,
+        });
+    } else {
+        magicJS.done();
+    }
+})();
 
-function hexToUtf8(hex) {
-    return decodeURIComponent('%' + hex.match(/.{1,2}/g).join('%'));
-}
-//Compatible code from https://github.com/chavyleung/scripts/blob/master/Env.min.js
-function Env(t,e){class s{constructor(t){this.env=t}send(t,e="GET"){t="string"==typeof t?{url:t}:t;let s=this.get;return"POST"===e&&(s=this.post),new Promise((e,i)=>{s.call(this,t,(t,s,r)=>{t?i(t):e(s)})})}get(t){return this.send.call(this.env,t)}post(t){return this.send.call(this.env,t,"POST")}}return new class{constructor(t,e){this.name=t,this.http=new s(this),this.data=null,this.dataFile="box.dat",this.logs=[],this.isMute=!1,this.isNeedRewrite=!1,this.logSeparator="\n",this.startTime=(new Date).getTime(),Object.assign(this,e),this.log("",`\ud83d\udd14${this.name}, \u5f00\u59cb!`)}isNode(){return"undefined"!=typeof module&&!!module.exports}isQuanX(){return"undefined"!=typeof $task}isSurge(){return"undefined"!=typeof $httpClient&&"undefined"==typeof $loon}isLoon(){return"undefined"!=typeof $loon}toObj(t,e=null){try{return JSON.parse(t)}catch{return e}}toStr(t,e=null){try{return JSON.stringify(t)}catch{return e}}getjson(t,e){let s=e;const i=this.getdata(t);if(i)try{s=JSON.parse(this.getdata(t))}catch{}return s}setjson(t,e){try{return this.setdata(JSON.stringify(t),e)}catch{return!1}}getScript(t){return new Promise(e=>{this.get({url:t},(t,s,i)=>e(i))})}runScript(t,e){return new Promise(s=>{let i=this.getdata("@chavy_boxjs_userCfgs.httpapi");i=i?i.replace(/\n/g,"").trim():i;let r=this.getdata("@chavy_boxjs_userCfgs.httpapi_timeout");r=r?1*r:20,r=e&&e.timeout?e.timeout:r;const[o,h]=i.split("@"),a={url:`http://${h}/v1/scripting/evaluate`,body:{script_text:t,mock_type:"cron",timeout:r},headers:{"X-Key":o,Accept:"*/*"}};this.post(a,(t,e,i)=>s(i))}).catch(t=>this.logErr(t))}loaddata(){if(!this.isNode())return{};{this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const t=this.path.resolve(this.dataFile),e=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(t),i=!s&&this.fs.existsSync(e);if(!s&&!i)return{};{const i=s?t:e;try{return JSON.parse(this.fs.readFileSync(i))}catch(t){return{}}}}}writedata(){if(this.isNode()){this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const t=this.path.resolve(this.dataFile),e=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(t),i=!s&&this.fs.existsSync(e),r=JSON.stringify(this.data);s?this.fs.writeFileSync(t,r):i?this.fs.writeFileSync(e,r):this.fs.writeFileSync(t,r)}}lodash_get(t,e,s){const i=e.replace(/\[(\d+)\]/g,".$1").split(".");let r=t;for(const t of i)if(r=Object(r)[t],void 0===r)return s;return r}lodash_set(t,e,s){return Object(t)!==t?t:(Array.isArray(e)||(e=e.toString().match(/[^.[\]]+/g)||[]),e.slice(0,-1).reduce((t,s,i)=>Object(t[s])===t[s]?t[s]:t[s]=Math.abs(e[i+1])>>0==+e[i+1]?[]:{},t)[e[e.length-1]]=s,t)}getdata(t){let e=this.getval(t);if(/^@/.test(t)){const[,s,i]=/^@(.*?)\.(.*?)$/.exec(t),r=s?this.getval(s):"";if(r)try{const t=JSON.parse(r);e=t?this.lodash_get(t,i,""):e}catch(t){e=""}}return e}setdata(t,e){let s=!1;if(/^@/.test(e)){const[,i,r]=/^@(.*?)\.(.*?)$/.exec(e),o=this.getval(i),h=i?"null"===o?null:o||"{}":"{}";try{const e=JSON.parse(h);this.lodash_set(e,r,t),s=this.setval(JSON.stringify(e),i)}catch(e){const o={};this.lodash_set(o,r,t),s=this.setval(JSON.stringify(o),i)}}else s=this.setval(t,e);return s}getval(t){return this.isSurge()||this.isLoon()?$persistentStore.read(t):this.isQuanX()?$prefs.valueForKey(t):this.isNode()?(this.data=this.loaddata(),this.data[t]):this.data&&this.data[t]||null}setval(t,e){return this.isSurge()||this.isLoon()?$persistentStore.write(t,e):this.isQuanX()?$prefs.setValueForKey(t,e):this.isNode()?(this.data=this.loaddata(),this.data[e]=t,this.writedata(),!0):this.data&&this.data[e]||null}initGotEnv(t){this.got=this.got?this.got:require("got"),this.cktough=this.cktough?this.cktough:require("tough-cookie"),this.ckjar=this.ckjar?this.ckjar:new this.cktough.CookieJar,t&&(t.headers=t.headers?t.headers:{},void 0===t.headers.Cookie&&void 0===t.cookieJar&&(t.cookieJar=this.ckjar))}get(t,e=(()=>{})){t.headers&&(delete t.headers["Content-Type"],delete t.headers["Content-Length"]),this.isSurge()||this.isLoon()?(this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.get(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)})):this.isQuanX()?(this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t))):this.isNode()&&(this.initGotEnv(t),this.got(t).on("redirect",(t,e)=>{try{if(t.headers["set-cookie"]){const s=t.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();this.ckjar.setCookieSync(s,null),e.cookieJar=this.ckjar}}catch(t){this.logErr(t)}}).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)}))}post(t,e=(()=>{})){if(t.body&&t.headers&&!t.headers["Content-Type"]&&(t.headers["Content-Type"]="application/x-www-form-urlencoded"),t.headers&&delete t.headers["Content-Length"],this.isSurge()||this.isLoon())this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.post(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)});else if(this.isQuanX())t.method="POST",this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t));else if(this.isNode()){this.initGotEnv(t);const{url:s,...i}=t;this.got.post(s,i).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)})}}time(t){let e={"M+":(new Date).getMonth()+1,"d+":(new Date).getDate(),"H+":(new Date).getHours(),"m+":(new Date).getMinutes(),"s+":(new Date).getSeconds(),"q+":Math.floor(((new Date).getMonth()+3)/3),S:(new Date).getMilliseconds()};/(y+)/.test(t)&&(t=t.replace(RegExp.$1,((new Date).getFullYear()+"").substr(4-RegExp.$1.length)));for(let s in e)new RegExp("("+s+")").test(t)&&(t=t.replace(RegExp.$1,1==RegExp.$1.length?e[s]:("00"+e[s]).substr((""+e[s]).length)));return t}msg(e=t,s="",i="",r){const o=t=>{if(!t)return t;if("string"==typeof t)return this.isLoon()?t:this.isQuanX()?{"open-url":t}:this.isSurge()?{url:t}:void 0;if("object"==typeof t){if(this.isLoon()){let e=t.openUrl||t.url||t["open-url"],s=t.mediaUrl||t["media-url"];return{openUrl:e,mediaUrl:s}}if(this.isQuanX()){let e=t["open-url"]||t.url||t.openUrl,s=t["media-url"]||t.mediaUrl;return{"open-url":e,"media-url":s}}if(this.isSurge()){let e=t.url||t.openUrl||t["open-url"];return{url:e}}}};this.isMute||(this.isSurge()||this.isLoon()?$notification.post(e,s,i,o(r)):this.isQuanX()&&$notify(e,s,i,o(r)));let h=["","==============\ud83d\udce3\u7cfb\u7edf\u901a\u77e5\ud83d\udce3=============="];h.push(e),s&&h.push(s),i&&h.push(i),console.log(h.join("\n")),this.logs=this.logs.concat(h)}log(...t){t.length>0&&(this.logs=[...this.logs,...t]),console.log(t.join(this.logSeparator))}logErr(t,e){const s=!this.isSurge()&&!this.isQuanX()&&!this.isLoon();s?this.log("",`\u2757\ufe0f${this.name}, \u9519\u8bef!`,t.stack):this.log("",`\u2757\ufe0f${this.name}, \u9519\u8bef!`,t)}wait(t){return new Promise(e=>setTimeout(e,t))}done(t={}){const e=(new Date).getTime(),s=(e-this.startTime)/1e3;this.log("",`\ud83d\udd14${this.name}, \u7ed3\u675f! \ud83d\udd5b ${s} \u79d2`),this.log(),(this.isSurge()||this.isQuanX()||this.isLoon())&&$done(t)}}(t,e)}
+
+// prettier-ignore
+function MagicJS(scriptName="MagicJS",logLevel="INFO"){return new class{constructor(){if(this.version="2.2.3.3",this.scriptName=scriptName,this.logLevels={DEBUG:5,INFO:4,NOTIFY:3,WARNING:2,ERROR:1,CRITICAL:0,NONE:-1},this.isLoon="undefined"!=typeof $loon,this.isQuanX="undefined"!=typeof $task,this.isJSBox="undefined"!=typeof $drive,this.isNode="undefined"!=typeof module&&!this.isJSBox,this.isSurge="undefined"!=typeof $httpClient&&!this.isLoon,this.node={request:void 0,fs:void 0,data:{}},this.iOSUserAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 13_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.5 Mobile/15E148 Safari/604.1",this.pcUserAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36 Edg/84.0.522.59",this.logLevel=logLevel,this._barkUrl="",this.isNode){this.node.fs=require("fs"),this.node.request=require("request");try{this.node.fs.accessSync("./magic.json",this.node.fs.constants.R_OK|this.node.fs.constants.W_OK)}catch(err){this.node.fs.writeFileSync("./magic.json","{}",{encoding:"utf8"})}this.node.data=require("./magic.json")}else this.isJSBox&&($file.exists("drive://MagicJS")||$file.mkdir("drive://MagicJS"),$file.exists("drive://MagicJS/magic.json")||$file.write({data:$data({string:"{}"}),path:"drive://MagicJS/magic.json"}))}set barkUrl(url){this._barkUrl=url.replace(/\/+$/g,"")}set logLevel(level){this._logLevel="string"==typeof level?level.toUpperCase():"DEBUG"}get logLevel(){return this._logLevel}get isRequest(){return"undefined"!=typeof $request&&"undefined"==typeof $response}get isResponse(){return"undefined"!=typeof $response}get request(){return"undefined"!=typeof $request?$request:void 0}get response(){return"undefined"!=typeof $response?($response.hasOwnProperty("status")&&($response.statusCode=$response.status),$response.hasOwnProperty("statusCode")&&($response.status=$response.statusCode),$response):void 0}get platform(){return this.isSurge?"Surge":this.isQuanX?"Quantumult X":this.isLoon?"Loon":this.isJSBox?"JSBox":this.isNode?"Node.js":"Unknown"}read(key,session=""){let val="";this.isSurge||this.isLoon?val=$persistentStore.read(key):this.isQuanX?val=$prefs.valueForKey(key):this.isNode?val=this.node.data:this.isJSBox&&(val=$file.read("drive://MagicJS/magic.json").string);try{this.isNode&&(val=val[key]),this.isJSBox&&(val=JSON.parse(val)[key]),session&&("string"==typeof val&&(val=JSON.parse(val)),val=val&&"object"==typeof val?val[session]:null)}catch(err){this.logError(err),val=session?{}:null,this.del(key)}void 0===val&&(val=null);try{val&&"string"==typeof val&&(val=JSON.parse(val))}catch(err){}return this.logDebug(`READ DATA [${key}]${session?`[${session}]`:""}(${typeof val})\n${JSON.stringify(val)}`),val}write(key,val,session=""){let data=session?{}:"";if(session&&(this.isSurge||this.isLoon)?data=$persistentStore.read(key):session&&this.isQuanX?data=$prefs.valueForKey(key):this.isNode?data=this.node.data:this.isJSBox&&(data=JSON.parse($file.read("drive://MagicJS/magic.json").string)),session){try{"string"==typeof data&&(data=JSON.parse(data)),data="object"==typeof data&&data?data:{}}catch(err){this.logError(err),this.del(key),data={}}this.isJSBox||this.isNode?(data[key]&&"object"==typeof data[key]||(data[key]={}),data[key].hasOwnProperty(session)||(data[key][session]=null),void 0===val?delete data[key][session]:data[key][session]=val):void 0===val?delete data[session]:data[session]=val}else this.isNode||this.isJSBox?void 0===val?delete data[key]:data[key]=val:data=void 0===val?null:val;"object"==typeof data&&(data=JSON.stringify(data)),this.isSurge||this.isLoon?$persistentStore.write(data,key):this.isQuanX?$prefs.setValueForKey(data,key):this.isNode?this.node.fs.writeFileSync("./magic.json",data):this.isJSBox&&$file.write({data:$data({string:data}),path:"drive://MagicJS/magic.json"}),this.logDebug(`WRITE DATA [${key}]${session?`[${session}]`:""}(${typeof val})\n${JSON.stringify(val)}`)}del(key,session=""){this.logDebug(`DELETE KEY [${key}]${session?`[${session}]`:""}`),this.write(key,null,session)}notify(title=this.scriptName,subTitle="",body="",opts=""){let convertOptions;if(opts=(_opts=>{let newOpts={};if("string"==typeof _opts)this.isLoon?newOpts={openUrl:_opts}:this.isQuanX?newOpts={"open-url":_opts}:this.isSurge&&(newOpts={url:_opts});else if("object"==typeof _opts)if(this.isLoon)newOpts.openUrl=_opts["open-url"]?_opts["open-url"]:"",newOpts.mediaUrl=_opts["media-url"]?_opts["media-url"]:"";else if(this.isQuanX)newOpts=_opts["open-url"]||_opts["media-url"]?_opts:{};else if(this.isSurge){let openUrl=_opts["open-url"]||_opts.openUrl;newOpts=openUrl?{url:openUrl}:{}}return newOpts})(opts),1==arguments.length&&(title=this.scriptName,subTitle="",body=arguments[0]),this.logNotify(`title:${title}\nsubTitle:${subTitle}\nbody:${body}\noptions:${"object"==typeof opts?JSON.stringify(opts):opts}`),this.isSurge)$notification.post(title,subTitle,body,opts);else if(this.isLoon)opts?$notification.post(title,subTitle,body,opts):$notification.post(title,subTitle,body);else if(this.isQuanX)$notify(title,subTitle,body,opts);else if(this.isNode){if(this._barkUrl){let content=encodeURI(`${title}/${subTitle}\n${body}`);this.get(`${this._barkUrl}/${content}`,()=>{})}}else if(this.isJSBox){let push={title:title,body:subTitle?`${subTitle}\n${body}`:body};$push.schedule(push)}}notifyDebug(title=this.scriptName,subTitle="",body="",opts=""){"DEBUG"===this.logLevel&&(1==arguments.length&&(title=this.scriptName,subTitle="",body=arguments[0]),this.notify(title,subTitle,body,opts))}log(msg,level="INFO"){this.logLevels[this._logLevel]<this.logLevels[level.toUpperCase()]||console.log(`[${level}] [${this.scriptName}]\n${msg}\n`)}logDebug(msg){this.log(msg,"DEBUG")}logInfo(msg){this.log(msg,"INFO")}logNotify(msg){this.log(msg,"NOTIFY")}logWarning(msg){this.log(msg,"WARNING")}logError(msg){this.log(msg,"ERROR")}logRetry(msg){this.log(msg,"RETRY")}adapterHttpOptions(options,method){let _options="object"==typeof options?Object.assign({},options):{url:options,headers:{}};_options.hasOwnProperty("header")&&!_options.hasOwnProperty("headers")&&(_options.headers=_options.header,delete _options.header);const headersMap={accept:"Accept","accept-ch":"Accept-CH","accept-charset":"Accept-Charset","accept-features":"Accept-Features","accept-encoding":"Accept-Encoding","accept-language":"Accept-Language","accept-ranges":"Accept-Ranges","access-control-allow-credentials":"Access-Control-Allow-Credentials","access-control-allow-origin":"Access-Control-Allow-Origin","access-control-allow-methods":"Access-Control-Allow-Methods","access-control-allow-headers":"Access-Control-Allow-Headers","access-control-max-age":"Access-Control-Max-Age","access-control-expose-headers":"Access-Control-Expose-Headers","access-control-request-method":"Access-Control-Request-Method","access-control-request-headers":"Access-Control-Request-Headers",age:"Age",allow:"Allow",alternates:"Alternates",authorization:"Authorization","cache-control":"Cache-Control",connection:"Connection","content-encoding":"Content-Encoding","content-language":"Content-Language","content-length":"Content-Length","content-location":"Content-Location","content-md5":"Content-MD5","content-range":"Content-Range","content-security-policy":"Content-Security-Policy","content-type":"Content-Type",cookie:"Cookie",dnt:"DNT",date:"Date",etag:"ETag",expect:"Expect",expires:"Expires",from:"From",host:"Host","if-match":"If-Match","if-modified-since":"If-Modified-Since","if-none-match":"If-None-Match","if-range":"If-Range","if-unmodified-since":"If-Unmodified-Since","last-event-id":"Last-Event-ID","last-modified":"Last-Modified",link:"Link",location:"Location","max-forwards":"Max-Forwards",negotiate:"Negotiate",origin:"Origin",pragma:"Pragma","proxy-authenticate":"Proxy-Authenticate","proxy-authorization":"Proxy-Authorization",range:"Range",referer:"Referer","retry-after":"Retry-After","sec-websocket-extensions":"Sec-Websocket-Extensions","sec-websocket-key":"Sec-Websocket-Key","sec-websocket-origin":"Sec-Websocket-Origin","sec-websocket-protocol":"Sec-Websocket-Protocol","sec-websocket-version":"Sec-Websocket-Version",server:"Server","set-cookie":"Set-Cookie","set-cookie2":"Set-Cookie2","strict-transport-security":"Strict-Transport-Security",tcn:"TCN",te:"TE",trailer:"Trailer","transfer-encoding":"Transfer-Encoding",upgrade:"Upgrade","user-agent":"User-Agent","variant-vary":"Variant-Vary",vary:"Vary",via:"Via",warning:"Warning","www-authenticate":"WWW-Authenticate","x-content-duration":"X-Content-Duration","x-content-security-policy":"X-Content-Security-Policy","x-dnsprefetch-control":"X-DNSPrefetch-Control","x-frame-options":"X-Frame-Options","x-requested-with":"X-Requested-With","x-surge-skip-scripting":"X-Surge-Skip-Scripting"};if("object"==typeof _options.headers)for(let key in _options.headers)headersMap[key]&&(_options.headers[headersMap[key]]=_options.headers[key],delete _options.headers[key]);_options.headers&&"object"==typeof _options.headers&&_options.headers["User-Agent"]||(_options.headers&&"object"==typeof _options.headers||(_options.headers={}),this.isNode?_options.headers["User-Agent"]=this.pcUserAgent:_options.headers["User-Agent"]=this.iOSUserAgent);let skipScripting=!1;if(("object"==typeof _options.opts&&(!0===_options.opts.hints||!0===_options.opts["Skip-Scripting"])||"object"==typeof _options.headers&&!0===_options.headers["X-Surge-Skip-Scripting"])&&(skipScripting=!0),skipScripting||(this.isSurge?_options.headers["X-Surge-Skip-Scripting"]=!1:this.isLoon?_options.headers["X-Requested-With"]="XMLHttpRequest":this.isQuanX&&("object"!=typeof _options.opts&&(_options.opts={}),_options.opts.hints=!1)),this.isSurge&&!skipScripting||delete _options.headers["X-Surge-Skip-Scripting"],!this.isQuanX&&_options.hasOwnProperty("opts")&&delete _options.opts,this.isQuanX&&_options.hasOwnProperty("opts")&&delete _options.opts["Skip-Scripting"],"GET"===method&&!this.isNode&&_options.body){let qs=Object.keys(_options.body).map(key=>void 0===_options.body?"":`${encodeURIComponent(key)}=${encodeURIComponent(_options.body[key])}`).join("&");_options.url.indexOf("?")<0&&(_options.url+="?"),_options.url.lastIndexOf("&")+1!=_options.url.length&&_options.url.lastIndexOf("?")+1!=_options.url.length&&(_options.url+="&"),_options.url+=qs,delete _options.body}return this.isQuanX?(_options.hasOwnProperty("body")&&"string"!=typeof _options.body&&(_options.body=JSON.stringify(_options.body)),_options.method=method):this.isNode?(delete _options.headers["Accept-Encoding"],"object"==typeof _options.body&&("GET"===method?(_options.qs=_options.body,delete _options.body):"POST"===method&&(_options.json=!0,_options.body=_options.body))):this.isJSBox&&(_options.header=_options.headers,delete _options.headers),_options}adapterHttpResponse(resp){let _resp={body:resp.body,headers:resp.headers,json:()=>JSON.parse(_resp.body)};return resp.hasOwnProperty("statusCode")&&resp.statusCode&&(_resp.status=resp.statusCode),_resp}get(options,callback){let _options=this.adapterHttpOptions(options,"GET");this.logDebug(`HTTP GET: ${JSON.stringify(_options)}`),this.isSurge||this.isLoon?$httpClient.get(_options,callback):this.isQuanX?$task.fetch(_options).then(resp=>{resp.status=resp.statusCode,callback(null,resp,resp.body)},reason=>callback(reason.error,null,null)):this.isNode?this.node.request.get(_options,(err,resp,data)=>{resp=this.adapterHttpResponse(resp),callback(err,resp,data)}):this.isJSBox&&(_options.handler=resp=>{let err=resp.error?JSON.stringify(resp.error):void 0,data="object"==typeof resp.data?JSON.stringify(resp.data):resp.data;callback(err,resp.response,data)},$http.get(_options))}getPromise(options){return new Promise((resolve,reject)=>{magicJS.get(options,(err,resp)=>{err?reject(err):resolve(resp)})})}post(options,callback){let _options=this.adapterHttpOptions(options,"POST");if(this.logDebug(`HTTP POST: ${JSON.stringify(_options)}`),this.isSurge||this.isLoon)$httpClient.post(_options,callback);else if(this.isQuanX)$task.fetch(_options).then(resp=>{resp.status=resp.statusCode,callback(null,resp,resp.body)},reason=>{callback(reason.error,null,null)});else if(this.isNode){let resp=this.node.request.post(_options,callback);resp.status=resp.statusCode,delete resp.statusCode}else this.isJSBox&&(_options.handler=resp=>{let err=resp.error?JSON.stringify(resp.error):void 0,data="object"==typeof resp.data?JSON.stringify(resp.data):resp.data;callback(err,resp.response,data)},$http.post(_options))}get http(){return{get:this.getPromise,post:this.post}}done(value={}){"undefined"!=typeof $done&&$done(value)}isToday(day){if(null==day)return!1;{let today=new Date;return"string"==typeof day&&(day=new Date(day)),today.getFullYear()==day.getFullYear()&&today.getMonth()==day.getMonth()&&today.getDay()==day.getDay()}}isNumber(val){return"NaN"!==parseFloat(val).toString()}attempt(promise,defaultValue=null){return promise.then(args=>[null,args]).catch(ex=>(this.logError(ex),[ex,defaultValue]))}retry(fn,retries=5,interval=0,callback=null){return(...args)=>new Promise((resolve,reject)=>{function _retry(...args){Promise.resolve().then(()=>fn.apply(this,args)).then(result=>{"function"==typeof callback?Promise.resolve().then(()=>callback(result)).then(()=>{resolve(result)}).catch(ex=>{retries>=1?interval>0?setTimeout(()=>_retry.apply(this,args),interval):_retry.apply(this,args):reject(ex),retries--}):resolve(result)}).catch(ex=>{this.logRetry(ex),retries>=1&&interval>0?setTimeout(()=>_retry.apply(this,args),interval):retries>=1?_retry.apply(this,args):reject(ex),retries--})}_retry.apply(this,args)})}formatTime(time,fmt="yyyy-MM-dd hh:mm:ss"){var o={"M+":time.getMonth()+1,"d+":time.getDate(),"h+":time.getHours(),"m+":time.getMinutes(),"s+":time.getSeconds(),"q+":Math.floor((time.getMonth()+3)/3),S:time.getMilliseconds()};/(y+)/.test(fmt)&&(fmt=fmt.replace(RegExp.$1,(time.getFullYear()+"").substr(4-RegExp.$1.length)));for(let k in o)new RegExp("("+k+")").test(fmt)&&(fmt=fmt.replace(RegExp.$1,1==RegExp.$1.length?o[k]:("00"+o[k]).substr((""+o[k]).length)));return fmt}now(){return this.formatTime(new Date,"yyyy-MM-dd hh:mm:ss")}today(){return this.formatTime(new Date,"yyyy-MM-dd")}sleep(time){return new Promise(resolve=>setTimeout(resolve,time))}}(scriptName)}
